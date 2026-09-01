@@ -1,0 +1,6 @@
+{
+  "name": "T&D Auto Invoices & Inspection Reports",
+  "description": "Application to fill, store, search, and export as image 3 vehicle inspection invoices: T&D Smog Test, T&D Inspection 90-Day, and Record of Annual Inspection.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
