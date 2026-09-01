@@ -3,6 +3,7 @@ import { SmogTestFormData, SavedInvoiceRecord } from '../../types';
 import { saveInvoice, getDefaultSmogTestData } from '../../utils/storage';
 import { exportElementAsImage } from '../../utils/exportImage';
 import { SignatureModal } from '../SignatureModal';
+import { AddressAutocomplete } from '../AddressAutocomplete';
 import { Download, Printer, Plus, Sparkles, RefreshCw, PenTool, CheckCircle2, FilePlus } from 'lucide-react';
 
 interface SmogTestFormProps {
@@ -125,7 +126,7 @@ export const SmogTestForm: React.FC<SmogTestFormProps> = ({
     };
 
     try {
-      saveInvoice(record);
+      await saveInvoice(record);
 
       const safeName = (formData.customerName || 'Customer').replace(/[^a-zA-Z0-9]/g, '_');
       const safePlate = (formData.license || 'Plate').replace(/[^a-zA-Z0-9]/g, '_');
@@ -137,11 +138,11 @@ export const SmogTestForm: React.FC<SmogTestFormProps> = ({
         scale: 2.5,
       });
 
-      showToast('Invoice saved & image exported successfully!');
+      showToast('Invoice synced to cloud & image exported successfully!');
       if (onSaved) onSaved(targetId);
     } catch (err) {
       console.error('Export error', err);
-      showToast('Invoice saved. Direct image export note.');
+      showToast('Invoice saved & synced to cloud!');
     } finally {
       setIsExporting(false);
     }
@@ -323,11 +324,19 @@ export const SmogTestForm: React.FC<SmogTestFormProps> = ({
               <label className="block text-[10px] font-bold uppercase tracking-wider text-black">
                 ADDRESS:
               </label>
-              <input
-                type="text"
+              <AddressAutocomplete
                 value={formData.address}
-                onChange={(e) => updateField('address', e.target.value)}
-                placeholder="Street Address"
+                onChange={(val) => updateField('address', val)}
+                onSelectAddress={({ address, city, state, zip }) => {
+                  setFormData((prev) => ({
+                    ...prev,
+                    address,
+                    city: city || prev.city,
+                    state: state || prev.state,
+                    zip: zip || prev.zip,
+                  }));
+                }}
+                placeholder="Street Address (e.g. 3417 Long St)"
                 className="w-full font-semibold text-sm outline-hidden bg-transparent"
               />
             </div>

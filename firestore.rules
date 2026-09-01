@@ -1,0 +1,9 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Invoices collection synced across all workstations & networks
+    match /invoices/{invoiceId} {
+      allow read, write: if true;
+    }
+  }
+}

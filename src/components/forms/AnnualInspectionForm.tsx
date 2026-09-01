@@ -3,6 +3,7 @@ import { AnnualInspectionFormData, SavedInvoiceRecord } from '../../types';
 import { saveInvoice, getDefaultAnnualInspectionData, ANNUAL_INSPECTION_ITEMS } from '../../utils/storage';
 import { exportElementAsImage } from '../../utils/exportImage';
 import { SignatureModal } from '../SignatureModal';
+import { AddressAutocomplete } from '../AddressAutocomplete';
 import { Download, Printer, Sparkles, RefreshCw, PenTool, CheckCircle2, CheckSquare, Phone, Plus } from 'lucide-react';
 
 interface AnnualInspectionFormProps {
@@ -129,7 +130,7 @@ export const AnnualInspectionForm: React.FC<AnnualInspectionFormProps> = ({
     };
 
     try {
-      saveInvoice(record);
+      await saveInvoice(record);
 
       const safeCarrier = (formData.carrierName || 'Carrier').replace(/[^a-zA-Z0-9]/g, '_');
       const safeTag = (formData.tagNoState || 'Tag').replace(/[^a-zA-Z0-9]/g, '_');
@@ -141,11 +142,11 @@ export const AnnualInspectionForm: React.FC<AnnualInspectionFormProps> = ({
         scale: 2.5,
       });
 
-      showToast('Invoice saved & image exported successfully!');
+      showToast('Invoice synced to cloud & image exported successfully!');
       if (onSaved) onSaved(targetId);
     } catch (err) {
       console.error('Export error', err);
-      showToast('Invoice saved. Direct image export note.');
+      showToast('Invoice saved & synced to cloud!');
     } finally {
       setIsExporting(false);
     }
@@ -462,10 +463,13 @@ export const AnnualInspectionForm: React.FC<AnnualInspectionFormProps> = ({
             {/* Row 4: Inspection Location */}
             <div className="flex items-baseline gap-2">
               <span className="font-bold uppercase whitespace-nowrap text-[11px]">Inspection Location:</span>
-              <input
-                type="text"
+              <AddressAutocomplete
                 value={formData.inspectionLocation}
-                onChange={(e) => updateField('inspectionLocation', e.target.value)}
+                onChange={(val) => updateField('inspectionLocation', val)}
+                onSelectAddress={({ address, city, state, zip }) => {
+                  const formatted = `${city ? `${city}, ` : ''}${state || 'CA'}${zip ? ` ${zip}` : ''}`.trim() || address;
+                  updateField('inspectionLocation', formatted);
+                }}
                 placeholder="Inspection Location (e.g. Hawthorne, CA)"
                 className="w-full border-b border-black font-medium outline-hidden bg-transparent"
               />

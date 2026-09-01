@@ -1,0 +1,30 @@
+{
+  "entities": {
+    "Invoice": {
+      "title": "Invoice",
+      "description": "Vehicle inspection records including Smog Test, 90-Day Inspection, and Record of Annual Inspection",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the invoice" },
+        "type": { "type": "string", "enum": ["smog_test", "inspection_90day", "annual_inspection"], "description": "Type of inspection invoice" },
+        "title": { "type": "string", "description": "Display title for the invoice" },
+        "customerOrCarrier": { "type": "string", "description": "Customer or carrier company name" },
+        "licenseOrTag": { "type": "string", "description": "Vehicle license plate or tag number" },
+        "phone": { "type": "string", "description": "Customer or carrier phone number" },
+        "vin": { "type": "string", "description": "Vehicle Identification Number" },
+        "invoiceOrFormNo": { "type": "string", "description": "Invoice or form sequential number" },
+        "date": { "type": "string", "description": "Inspection date in YYYY-MM-DD format" },
+        "createdAt": { "type": "number", "description": "Creation timestamp in milliseconds" },
+        "updatedAt": { "type": "number", "description": "Last updated timestamp in milliseconds" },
+        "data": { "type": "object", "description": "Full document form data" }
+      },
+      "required": ["id", "type", "customerOrCarrier", "date"]
+    }
+  },
+  "firestore": {
+    "/invoices/{invoiceId}": {
+      "entity": "Invoice",
+      "description": "Global collection of all saved inspection invoices synced across devices"
+    }
+  }
+}

@@ -1,4 +1,5 @@
 import { AnnualInspectionFormData, FormType, Inspection90DayFormData, SavedInvoiceRecord, SmogTestFormData } from '../types';
+import { saveInvoiceToCloud, deleteInvoiceFromCloud } from './firebase';
 
 const PASSWORD_KEY = 'td_app_password';
 const INVOICES_KEY = 'td_saved_invoices';
@@ -202,7 +203,7 @@ export const getDefaultAnnualInspectionData = (): AnnualInspectionFormData => {
   };
 };
 
-const SAMPLE_INVOICES: SavedInvoiceRecord[] = [
+export const SAMPLE_INVOICES: SavedInvoiceRecord[] = [
   {
     id: 'sample-smog-1',
     type: 'smog_test',
@@ -348,21 +349,51 @@ export const getSavedInvoices = (): SavedInvoiceRecord[] => {
   }
 };
 
-export const saveInvoice = (record: SavedInvoiceRecord): void => {
-  const list = getSavedInvoices();
-  const existingIndex = list.findIndex((i) => i.id === record.id);
-  if (existingIndex >= 0) {
-    list[existingIndex] = { ...record, updatedAt: Date.now() };
-  } else {
-    list.unshift({ ...record, createdAt: Date.now(), updatedAt: Date.now() });
+export const syncCloudInvoicesToLocal = (records: SavedInvoiceRecord[]): void => {
+  try {
+    if (records && records.length > 0) {
+      localStorage.setItem(INVOICES_KEY, JSON.stringify(records));
+    }
+  } catch (err) {
+    console.error('Failed to sync cloud invoices to local cache:', err);
   }
-  localStorage.setItem(INVOICES_KEY, JSON.stringify(list));
 };
 
-export const deleteInvoice = (id: string): void => {
+export const saveInvoice = async (record: SavedInvoiceRecord): Promise<void> => {
+  const list = getSavedInvoices();
+  const existingIndex = list.findIndex((i) => i.id === record.id);
+  const updatedRecord: SavedInvoiceRecord = {
+    ...record,
+    createdAt: record.createdAt || Date.now(),
+    updatedAt: Date.now(),
+  };
+
+  if (existingIndex >= 0) {
+    list[existingIndex] = updatedRecord;
+  } else {
+    list.unshift(updatedRecord);
+  }
+  localStorage.setItem(INVOICES_KEY, JSON.stringify(list));
+
+  // Sync to Firestore Cloud Database in the background so all workstations get it
+  try {
+    await saveInvoiceToCloud(updatedRecord);
+  } catch (err) {
+    console.error('Firestore cloud save failed (saved locally):', err);
+  }
+};
+
+export const deleteInvoice = async (id: string): Promise<void> => {
   const list = getSavedInvoices();
   const updated = list.filter((i) => i.id !== id);
   localStorage.setItem(INVOICES_KEY, JSON.stringify(updated));
+
+  // Delete from Firestore Cloud Database
+  try {
+    await deleteInvoiceFromCloud(id);
+  } catch (err) {
+    console.error('Firestore cloud delete failed (deleted locally):', err);
+  }
 };
 
 export const exportAllDataToJson = (): void => {

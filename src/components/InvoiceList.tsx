@@ -4,9 +4,11 @@ import {
   getSavedInvoices,
   deleteInvoice,
   saveInvoice,
+  syncCloudInvoicesToLocal,
   exportAllDataToJson,
   importDataFromJson,
 } from '../utils/storage';
+import { subscribeToCloudInvoices } from '../utils/firebase';
 import {
   Search,
   FileText,
@@ -25,6 +27,9 @@ import {
   AlertCircle,
   FileCheck,
   Plus,
+  Cloud,
+  CloudCheck,
+  RefreshCw,
 } from 'lucide-react';
 
 interface InvoiceListProps {
@@ -44,6 +49,30 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
   const [searchQuery, setSearchQuery] = useState(searchQueryExternal || '');
   const [filterType, setFilterType] = useState<FormType | 'all'>('all');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+  const [isCloudSynced, setIsCloudSynced] = useState<boolean>(true);
+
+  // Subscribe to real-time Firestore database updates
+  useEffect(() => {
+    const unsubscribe = subscribeToCloudInvoices(
+      (cloudInvoices) => {
+        if (cloudInvoices && cloudInvoices.length > 0) {
+          setInvoices(cloudInvoices);
+          syncCloudInvoicesToLocal(cloudInvoices);
+          setIsCloudSynced(true);
+        }
+      },
+      (err) => {
+        console.warn('Firestore subscription error in InvoiceList:', err);
+        setIsCloudSynced(false);
+      }
+    );
+
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, []);
 
   useEffect(() => {
     if (searchQueryExternal !== undefined) {
@@ -67,15 +96,15 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
     setInvoices(getSavedInvoices());
   };
 
-  const handleDelete = (id: string, title: string) => {
+  const handleDelete = async (id: string, title: string) => {
     if (window.confirm(`Are you sure you want to delete invoice:\n"${title}"?`)) {
-      deleteInvoice(id);
+      await deleteInvoice(id);
       refreshList();
       showToast('Invoice deleted successfully!');
     }
   };
 
-  const handleDuplicate = (record: SavedInvoiceRecord) => {
+  const handleDuplicate = async (record: SavedInvoiceRecord) => {
     const newId = `${record.type}_${Date.now()}`;
     const duplicated: SavedInvoiceRecord = {
       ...record,
@@ -87,7 +116,7 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
         ...record.data,
       },
     };
-    saveInvoice(duplicated);
+    await saveInvoice(duplicated);
     refreshList();
     showToast('Invoice duplicated successfully!');
   };
@@ -192,9 +221,26 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
       {/* Top Banner & Quick Actions */}
       <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-2xs flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="text-lg font-bold text-slate-900 tracking-tight">
-            Invoice & Inspection Archive
-          </h2>
+          <div className="flex items-center gap-2.5">
+            <h2 className="text-lg font-bold text-slate-900 tracking-tight">
+              Invoice & Inspection Archive
+            </h2>
+            <span
+              className={`inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full text-[11px] font-semibold ${
+                isCloudSynced
+                  ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/80'
+                  : 'bg-amber-50 text-amber-700 border border-amber-200/80'
+              }`}
+              title={
+                isCloudSynced
+                  ? 'Real-time Cloud Database is Active. All invoices are automatically synced across all computers and networks.'
+                  : 'Connecting to Cloud Database...'
+              }
+            >
+              <Cloud className={`w-3 h-3 ${isCloudSynced ? 'text-emerald-600' : 'text-amber-600 animate-pulse'}`} />
+              {isCloudSynced ? 'Cloud Synced (All Devices)' : 'Connecting...'}
+            </span>
+          </div>
           <p className="text-xs text-slate-500 mt-0.5">
             Search by license plate, customer name, phone, VIN, or invoice number...
           </p>

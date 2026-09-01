@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   FormType,
   SavedInvoiceRecord,
@@ -8,10 +8,12 @@ import {
 } from './types';
 import {
   getSavedInvoices,
+  syncCloudInvoicesToLocal,
   getDefaultSmogTestData,
   getDefaultInspection90DayData,
   getDefaultAnnualInspectionData,
 } from './utils/storage';
+import { subscribeToCloudInvoices } from './utils/firebase';
 import { Sidebar } from './components/Sidebar';
 import { TopHeader } from './components/TopHeader';
 import { LoginScreen } from './components/LoginScreen';
@@ -41,6 +43,27 @@ export default function App() {
   const [editingAnnualData, setEditingAnnualData] = useState<AnnualInspectionFormData | undefined>(undefined);
 
   const [savedCount, setSavedCount] = useState<number>(() => getSavedInvoices().length);
+
+  // Subscribe to real-time Firestore database updates across all networks/devices
+  useEffect(() => {
+    const unsubscribe = subscribeToCloudInvoices(
+      (cloudInvoices) => {
+        if (cloudInvoices && cloudInvoices.length > 0) {
+          syncCloudInvoicesToLocal(cloudInvoices);
+          setSavedCount(cloudInvoices.length);
+        }
+      },
+      (err) => {
+        console.warn('Firestore real-time subscription error:', err);
+      }
+    );
+
+    return () => {
+      if (typeof unsubscribe === 'function') {
+        unsubscribe();
+      }
+    };
+  }, []);
 
   const updateSavedCount = () => {
     setSavedCount(getSavedInvoices().length);

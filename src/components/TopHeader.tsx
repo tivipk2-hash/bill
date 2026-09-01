@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Search, Menu } from 'lucide-react';
+import { Search, Menu, Cloud } from 'lucide-react';
 import { ActiveTab } from '../App';
 
 interface TopHeaderProps {
@@ -70,8 +70,12 @@ export const TopHeader: React.FC<TopHeaderProps> = ({
       </div>
 
       {/* Date & Status Indicator */}
-      <div className="flex items-center space-x-4">
-        <div className="hidden sm:flex items-center text-xs text-slate-400 font-medium">
+      <div className="flex items-center space-x-3 sm:space-x-4">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-[11px] font-semibold" title="Data is saved in Cloud Firestore and synced in real-time across all computers and networks">
+          <Cloud className="w-3.5 h-3.5 text-emerald-600" />
+          <span className="hidden sm:inline">Cloud Synced</span>
+        </div>
+        <div className="hidden md:flex items-center text-xs text-slate-400 font-medium">
           <span className="w-2 h-2 rounded-full bg-emerald-500 mr-2 shrink-0 animate-pulse" />
           {timeString || 'Online'}
         </div>

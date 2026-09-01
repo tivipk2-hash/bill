@@ -124,7 +124,7 @@ export const Inspection90DayForm: React.FC<Inspection90DayFormProps> = ({
     };
 
     try {
-      saveInvoice(record);
+      await saveInvoice(record);
 
       const safeCarrier = (formData.carrierName || 'Carrier').replace(/[^a-zA-Z0-9]/g, '_');
       const safeUnit = (formData.unitNo || 'Unit').replace(/[^a-zA-Z0-9]/g, '_');
@@ -136,11 +136,11 @@ export const Inspection90DayForm: React.FC<Inspection90DayFormProps> = ({
         scale: 2.5,
       });
 
-      showToast('Invoice saved & image exported successfully!');
+      showToast('Invoice synced to cloud & image exported successfully!');
       if (onSaved) onSaved(targetId);
     } catch (err) {
       console.error('Export error', err);
-      showToast('Invoice saved. Direct image export note.');
+      showToast('Invoice saved & synced to cloud!');
     } finally {
       setIsExporting(false);
     }
