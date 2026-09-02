@@ -18,6 +18,7 @@ import { Sidebar } from './components/Sidebar';
 import { TopHeader } from './components/TopHeader';
 import { LoginScreen } from './components/LoginScreen';
 import { ChangePasswordModal } from './components/ChangePasswordModal';
+import { BackupRestoreModal } from './components/BackupRestoreModal';
 import { SmogTestForm } from './components/forms/SmogTestForm';
 import { Inspection90DayForm } from './components/forms/Inspection90DayForm';
 import { AnnualInspectionForm } from './components/forms/AnnualInspectionForm';
@@ -32,6 +33,7 @@ export default function App() {
   });
   const [activeTab, setActiveTab] = useState<ActiveTab>('smog_test');
   const [isChangePasswordOpen, setIsChangePasswordOpen] = useState(false);
+  const [isBackupRestoreOpen, setIsBackupRestoreOpen] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [globalSearchQuery, setGlobalSearchQuery] = useState('');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -169,6 +171,7 @@ export default function App() {
           }
         }}
         onOpenChangePassword={() => setIsChangePasswordOpen(true)}
+        onOpenBackupRestore={() => setIsBackupRestoreOpen(true)}
         onLogout={handleLogout}
         savedCount={savedCount}
         isOpenMobile={isMobileMenuOpen}
@@ -235,6 +238,16 @@ export default function App() {
         isOpen={isChangePasswordOpen}
         onClose={() => setIsChangePasswordOpen(false)}
         onSuccess={(msg) => showToast(msg)}
+      />
+
+      {/* Global Backup & Restore Center Modal */}
+      <BackupRestoreModal
+        isOpen={isBackupRestoreOpen}
+        onClose={() => setIsBackupRestoreOpen(false)}
+        onDataRestored={() => {
+          updateSavedCount();
+          showToast('Invoices backup successfully restored and synced to cloud!');
+        }}
       />
     </div>
   );

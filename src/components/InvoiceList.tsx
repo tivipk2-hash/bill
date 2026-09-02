@@ -6,9 +6,10 @@ import {
   saveInvoice,
   syncCloudInvoicesToLocal,
   exportAllDataToJson,
-  importDataFromJson,
+  importDataFromJsonWithMerge,
 } from '../utils/storage';
 import { subscribeToCloudInvoices } from '../utils/firebase';
+import { BackupRestoreModal } from './BackupRestoreModal';
 import {
   Search,
   FileText,
@@ -28,8 +29,8 @@ import {
   FileCheck,
   Plus,
   Cloud,
-  CloudCheck,
   RefreshCw,
+  Database,
 } from 'lucide-react';
 
 interface InvoiceListProps {
@@ -50,6 +51,7 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
   const [filterType, setFilterType] = useState<FormType | 'all'>('all');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isCloudSynced, setIsCloudSynced] = useState<boolean>(true);
+  const [isBackupModalOpen, setIsBackupModalOpen] = useState<boolean>(false);
 
   // Subscribe to real-time Firestore database updates
   useEffect(() => {
@@ -121,20 +123,22 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
     showToast('Invoice duplicated successfully!');
   };
 
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const content = event.target?.result as string;
       if (content) {
-        const success = importDataFromJson(content);
-        if (success) {
+        const result = await importDataFromJsonWithMerge(content);
+        if (result.success) {
           refreshList();
-          showToast('Data restored from JSON backup file successfully!');
+          showToast(
+            `Restored: +${result.newAdded} new, ${result.updatedMerged} merged safely with zero duplicate error!`
+          );
         } else {
-          alert('Invalid JSON backup file format!');
+          alert(`Import error: ${result.errorMessage || 'Invalid JSON backup file format!'}`);
         }
       }
     };
@@ -352,16 +356,25 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
           <div className="flex items-center gap-2 text-xs">
             <button
               type="button"
+              onClick={() => setIsBackupModalOpen(true)}
+              className="flex items-center gap-1.5 px-3.5 py-1.5 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-800 font-semibold rounded-lg transition cursor-pointer shadow-2xs"
+              title="Open Backup & Restore Center"
+            >
+              <Database className="w-3.5 h-3.5 text-blue-600" />
+              Backup & Restore Center
+            </button>
+            <button
+              type="button"
               onClick={exportAllDataToJson}
-              className="flex items-center gap-1 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium rounded-lg transition cursor-pointer shadow-2xs"
+              className="hidden sm:flex items-center gap-1 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium rounded-lg transition cursor-pointer shadow-2xs"
               title="Export all records to JSON backup"
             >
               <Download className="w-3.5 h-3.5 text-slate-500" />
-              Backup JSON
+              Export JSON
             </button>
-            <label className="flex items-center gap-1 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium rounded-lg transition cursor-pointer shadow-2xs">
+            <label className="hidden sm:flex items-center gap-1 px-3 py-1.5 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 font-medium rounded-lg transition cursor-pointer shadow-2xs">
               <Upload className="w-3.5 h-3.5 text-slate-500" />
-              Restore
+              Upload Backup
               <input
                 type="file"
                 accept=".json"
@@ -483,6 +496,16 @@ export const InvoiceList: React.FC<InvoiceListProps> = ({
           ))}
         </div>
       )}
+
+      {/* Backup & Restore Center Modal */}
+      <BackupRestoreModal
+        isOpen={isBackupModalOpen}
+        onClose={() => setIsBackupModalOpen(false)}
+        onDataRestored={() => {
+          refreshList();
+          showToast('Invoices backup successfully restored and synced to cloud!');
+        }}
+      />
     </div>
   );
 };

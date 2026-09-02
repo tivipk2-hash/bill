@@ -1,5 +1,5 @@
 import { AnnualInspectionFormData, FormType, Inspection90DayFormData, SavedInvoiceRecord, SmogTestFormData } from '../types';
-import { saveInvoiceToCloud, deleteInvoiceFromCloud } from './firebase';
+import { saveInvoiceToCloud, deleteInvoiceFromCloud, batchSaveInvoicesToCloud } from './firebase';
 
 const PASSWORD_KEY = 'td_app_password';
 const INVOICES_KEY = 'td_saved_invoices';
@@ -396,27 +396,265 @@ export const deleteInvoice = async (id: string): Promise<void> => {
   }
 };
 
+export interface ImportSummary {
+  success: boolean;
+  totalInFile: number;
+  newAdded: number;
+  updatedMerged: number;
+  skipped: number;
+  totalAfterImport: number;
+  errorMessage?: string;
+}
+
 export const exportAllDataToJson = (): void => {
   const invoices = getSavedInvoices();
-  const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(invoices, null, 2));
+  const backupPayload = {
+    appName: 'T&D Inspection Management Hub',
+    version: 1.2,
+    exportedAt: new Date().toISOString(),
+    totalRecords: invoices.length,
+    invoices,
+  };
+
+  const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(backupPayload, null, 2));
   const downloadAnchor = document.createElement('a');
   downloadAnchor.setAttribute('href', dataStr);
-  downloadAnchor.setAttribute('download', `TD_Invoices_Backup_${new Date().toISOString().split('T')[0]}.json`);
+  const dateStr = new Date().toISOString().split('T')[0];
+  downloadAnchor.setAttribute('download', `TD_Invoices_Backup_${dateStr}_(${invoices.length}_records).json`);
   document.body.appendChild(downloadAnchor);
   downloadAnchor.click();
   downloadAnchor.remove();
 };
 
-export const importDataFromJson = (jsonString: string): boolean => {
+/**
+ * Intelligent JSON import with robust deduplication & seamless merge.
+ * Duplicates are safely merged without throwing errors or corrupting data.
+ * Merged results are saved locally and synced to Firestore Cloud Database.
+ */
+export const importDataFromJsonWithMerge = async (jsonString: string): Promise<ImportSummary> => {
   try {
-    const parsed = JSON.parse(jsonString);
-    if (Array.isArray(parsed)) {
-      localStorage.setItem(INVOICES_KEY, JSON.stringify(parsed));
-      return true;
+    if (!jsonString || typeof jsonString !== 'string') {
+      return {
+        success: false,
+        totalInFile: 0,
+        newAdded: 0,
+        updatedMerged: 0,
+        skipped: 0,
+        totalAfterImport: getSavedInvoices().length,
+        errorMessage: 'Empty or invalid JSON content provided.',
+      };
     }
-    return false;
+
+    const parsed = JSON.parse(jsonString);
+    let candidateList: unknown[] = [];
+
+    if (Array.isArray(parsed)) {
+      candidateList = parsed;
+    } else if (parsed && typeof parsed === 'object') {
+      if (Array.isArray((parsed as { invoices?: unknown[] }).invoices)) {
+        candidateList = (parsed as { invoices: unknown[] }).invoices;
+      } else if (Array.isArray((parsed as { data?: unknown[] }).data)) {
+        candidateList = (parsed as { data: unknown[] }).data;
+      } else if ('type' in parsed || 'customerOrCarrier' in parsed || 'data' in parsed) {
+        // Single invoice JSON
+        candidateList = [parsed];
+      }
+    }
+
+    if (candidateList.length === 0) {
+      return {
+        success: false,
+        totalInFile: 0,
+        newAdded: 0,
+        updatedMerged: 0,
+        skipped: 0,
+        totalAfterImport: getSavedInvoices().length,
+        errorMessage: 'No valid invoice records found in uploaded file.',
+      };
+    }
+
+    const currentList = getSavedInvoices();
+    // Use a map keyed by ID for O(1) deduplication and fast merging
+    const recordsMap = new Map<string, SavedInvoiceRecord>();
+    for (const record of currentList) {
+      if (record.id) {
+        recordsMap.set(record.id, record);
+      }
+    }
+
+    let newAddedCount = 0;
+    let updatedMergedCount = 0;
+    let skippedCount = 0;
+    const recordsToSyncCloud: SavedInvoiceRecord[] = [];
+
+    for (const rawItem of candidateList) {
+      if (!rawItem || typeof rawItem !== 'object') {
+        skippedCount++;
+        continue;
+      }
+
+      const item = rawItem as Partial<SavedInvoiceRecord> & { [key: string]: unknown };
+      const formType: FormType =
+        item.type === 'inspection_90day' || item.type === 'annual_inspection' || item.type === 'smog_test'
+          ? item.type
+          : 'smog_test';
+
+      const customerOrCarrier = String(
+        item.customerOrCarrier ||
+          (item.data && typeof item.data === 'object' && ('customerName' in item.data ? item.data.customerName : '')) ||
+          (item.data && typeof item.data === 'object' && ('carrierName' in item.data ? item.data.carrierName : '')) ||
+          'Unnamed Customer'
+      );
+
+      const licenseOrTag = String(
+        item.licenseOrTag ||
+          (item.data && typeof item.data === 'object' && ('license' in item.data ? item.data.license : '')) ||
+          (item.data && typeof item.data === 'object' && ('tagNoState' in item.data ? item.data.tagNoState : '')) ||
+          ''
+      );
+
+      const invoiceOrFormNo = String(
+        item.invoiceOrFormNo ||
+          (item.data && typeof item.data === 'object' && ('invoiceNo' in item.data ? item.data.invoiceNo : '')) ||
+          (item.data && typeof item.data === 'object' && ('formNo' in item.data ? item.data.formNo : '')) ||
+          ''
+      );
+
+      const vin = String(
+        item.vin ||
+          (item.data && typeof item.data === 'object' && ('vin' in item.data ? item.data.vin : '')) ||
+          ''
+      );
+
+      const phone = String(
+        item.phone ||
+          (item.data && typeof item.data === 'object' && ('phone' in item.data ? item.data.phone : '')) ||
+          ''
+      );
+
+      const date = String(
+        item.date ||
+          (item.data && typeof item.data === 'object' && ('date' in item.data ? item.data.date : '')) ||
+          new Date().toISOString().split('T')[0]
+      );
+
+      const title = String(
+        item.title ||
+          `${formType === 'smog_test' ? 'Smog Test' : formType === 'inspection_90day' ? '90-Day Inspection' : 'Annual Inspection'} - ${customerOrCarrier}`
+      );
+
+      const validFormData = (item.data && typeof item.data === 'object' ? item.data : item) as
+        | SmogTestFormData
+        | Inspection90DayFormData
+        | AnnualInspectionFormData;
+
+      // Check for exact ID match first
+      let existingRecord: SavedInvoiceRecord | undefined;
+      if (item.id && recordsMap.has(item.id)) {
+        existingRecord = recordsMap.get(item.id);
+      } else {
+        // Look for business key duplicate: same type + same invoice number + matching VIN / Plate
+        for (const existing of recordsMap.values()) {
+          if (existing.type === formType) {
+            const hasSameInvoiceNo =
+              invoiceOrFormNo && existing.invoiceOrFormNo && invoiceOrFormNo === existing.invoiceOrFormNo;
+            const hasSameVinOrPlate =
+              (vin && existing.vin && vin === existing.vin) ||
+              (licenseOrTag && existing.licenseOrTag && licenseOrTag.toLowerCase() === existing.licenseOrTag.toLowerCase());
+
+            if (hasSameInvoiceNo || (hasSameVinOrPlate && customerOrCarrier === existing.customerOrCarrier)) {
+              existingRecord = existing;
+              break;
+            }
+          }
+        }
+      }
+
+      if (existingRecord) {
+        // DUPLICATE FOUND: Merge safely without errors
+        const mergedData = { ...existingRecord.data, ...validFormData };
+        const mergedRecord: SavedInvoiceRecord = {
+          ...existingRecord,
+          title: title || existingRecord.title,
+          customerOrCarrier: customerOrCarrier || existingRecord.customerOrCarrier,
+          licenseOrTag: licenseOrTag || existingRecord.licenseOrTag,
+          phone: phone || existingRecord.phone,
+          vin: vin || existingRecord.vin,
+          invoiceOrFormNo: invoiceOrFormNo || existingRecord.invoiceOrFormNo,
+          date: date || existingRecord.date,
+          updatedAt: Math.max(existingRecord.updatedAt || 0, item.updatedAt ? Number(item.updatedAt) : Date.now()),
+          createdAt: existingRecord.createdAt || (item.createdAt ? Number(item.createdAt) : Date.now()),
+          data: mergedData,
+        };
+
+        recordsMap.set(existingRecord.id, mergedRecord);
+        recordsToSyncCloud.push(mergedRecord);
+        updatedMergedCount++;
+      } else {
+        // NEW RECORD: Insert safely
+        const newId = item.id ? String(item.id) : `${formType}_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+        const newRecord: SavedInvoiceRecord = {
+          id: newId,
+          type: formType,
+          title,
+          customerOrCarrier,
+          licenseOrTag,
+          phone,
+          vin,
+          invoiceOrFormNo,
+          date,
+          createdAt: item.createdAt ? Number(item.createdAt) : Date.now(),
+          updatedAt: item.updatedAt ? Number(item.updatedAt) : Date.now(),
+          data: validFormData,
+        };
+
+        recordsMap.set(newId, newRecord);
+        recordsToSyncCloud.push(newRecord);
+        newAddedCount++;
+      }
+    }
+
+    // Sort by updatedAt descending
+    const mergedFinalList = Array.from(recordsMap.values()).sort(
+      (a, b) => (b.updatedAt || 0) - (a.updatedAt || 0)
+    );
+
+    // Save locally
+    localStorage.setItem(INVOICES_KEY, JSON.stringify(mergedFinalList));
+
+    // Batch upload to Firestore Cloud Database in background
+    if (recordsToSyncCloud.length > 0) {
+      batchSaveInvoicesToCloud(recordsToSyncCloud).catch((err) => {
+        console.warn('Firestore cloud batch sync note:', err);
+      });
+    }
+
+    return {
+      success: true,
+      totalInFile: candidateList.length,
+      newAdded: newAddedCount,
+      updatedMerged: updatedMergedCount,
+      skipped: skippedCount,
+      totalAfterImport: mergedFinalList.length,
+    };
   } catch (err) {
-    console.error('Import error', err);
-    return false;
+    console.error('Failed to import backup JSON:', err);
+    return {
+      success: false,
+      totalInFile: 0,
+      newAdded: 0,
+      updatedMerged: 0,
+      skipped: 0,
+      totalAfterImport: getSavedInvoices().length,
+      errorMessage: err instanceof Error ? err.message : 'Invalid JSON file format.',
+    };
   }
+};
+
+/**
+ * Legacy import wrapper for backwards compatibility
+ */
+export const importDataFromJson = async (jsonString: string): Promise<boolean> => {
+  const result = await importDataFromJsonWithMerge(jsonString);
+  return result.success;
 };

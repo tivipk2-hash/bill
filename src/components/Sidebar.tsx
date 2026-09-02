@@ -9,12 +9,14 @@ import {
   FileSpreadsheet,
   Truck,
   FileCheck,
+  Database,
 } from 'lucide-react';
 
 interface SidebarProps {
   activeTab: ActiveTab;
   onTabChange: (tab: ActiveTab) => void;
   onOpenChangePassword: () => void;
+  onOpenBackupRestore?: () => void;
   onLogout: () => void;
   savedCount: number;
   isOpenMobile: boolean;
@@ -25,6 +27,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
   activeTab,
   onTabChange,
   onOpenChangePassword,
+  onOpenBackupRestore,
   onLogout,
   savedCount,
   isOpenMobile,
@@ -155,6 +158,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
               </span>
             )}
           </button>
+
+          {onOpenBackupRestore && (
+            <button
+              type="button"
+              onClick={() => {
+                onOpenBackupRestore();
+                onCloseMobile();
+              }}
+              className="w-full text-left px-3.5 py-2.5 rounded-lg text-sm flex items-center transition-colors cursor-pointer hover:bg-slate-50 text-slate-600 group"
+            >
+              <Database className="w-4 h-4 mr-3 shrink-0 text-slate-400 group-hover:text-blue-600" />
+              <span className="truncate">Backup & Restore</span>
+            </button>
+          )}
         </nav>
 
         {/* User Profile & Admin Footer */}

@@ -5,6 +5,7 @@ import {
   doc,
   setDoc,
   deleteDoc,
+  writeBatch,
   onSnapshot,
   getDocs,
   query,
@@ -60,6 +61,44 @@ export const saveInvoiceToCloud = async (record: SavedInvoiceRecord): Promise<vo
   } catch (error) {
     console.error('Error saving invoice to Firestore:', error);
     throw error;
+  }
+};
+
+/**
+ * Batch save multiple invoices to Firestore with chunking to handle any size
+ */
+export const batchSaveInvoicesToCloud = async (records: SavedInvoiceRecord[]): Promise<void> => {
+  if (!records || records.length === 0) return;
+  try {
+    // Firestore batch limit is 500 ops per batch
+    const CHUNK_SIZE = 400;
+    for (let i = 0; i < records.length; i += CHUNK_SIZE) {
+      const chunk = records.slice(i, i + CHUNK_SIZE);
+      const batch = writeBatch(db);
+      for (const record of chunk) {
+        if (!record.id) continue;
+        const docRef = doc(db, INVOICES_COLLECTION, record.id);
+        const payload = {
+          ...record,
+          updatedAt: record.updatedAt || Date.now(),
+          createdAt: record.createdAt || Date.now(),
+        };
+        batch.set(docRef, payload, { merge: true });
+      }
+      await batch.commit();
+    }
+  } catch (error) {
+    console.error('Error in batchSaveInvoicesToCloud:', error);
+    // Fallback to iterative saving if batch fails
+    for (const record of records) {
+      if (!record.id) continue;
+      try {
+        const docRef = doc(db, INVOICES_COLLECTION, record.id);
+        await setDoc(docRef, record, { merge: true });
+      } catch (innerErr) {
+        console.warn(`Failed to sync invoice ${record.id} to cloud:`, innerErr);
+      }
+    }
   }
 };
 
